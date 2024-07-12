@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -47,6 +48,10 @@ func main() {
 	start = time.Now()
 	parseJsonlConcurrentWithJsonl(input)
 	fmt.Println(time.Since(start))
+	fmt.Println("----Concurrent with jsonl and count----")
+	start = time.Now()
+	parseJsonlWithCount(input)
+	fmt.Println(time.Since(start))
 
 }
 
@@ -67,6 +72,57 @@ func parseJsonl(body []byte) {
 	if err != nil {
 		log.Printf("Failed to unmarshal, %v", err)
 	}
+	fmt.Println("Length: ", len(ps))
+
+}
+
+func parseJsonlWithCount(input []byte) {
+	count := bytes.Count(input, []byte("\n"))
+
+	lineBreakMap := make([]int, count+1)
+
+	r := jsonl.NewReader(strings.NewReader(string(input)))
+
+	current := 0
+	i := 0
+	err := r.ReadLines(func(data []byte) error {
+		new := current + len(data)
+		// lineBreakMap = append(lineBreakMap, new)
+		lineBreakMap[i] = new
+		current = new + 1
+		i++
+
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	var lineNumber int = len(lineBreakMap)
+
+	ps := make([]Product, lineNumber)
+
+	var wg sync.WaitGroup
+	for i, pos := range lineBreakMap {
+		wg.Add(1)
+		go func() {
+			var line []byte
+			if i == 0 {
+				line = input[0:pos]
+			} else {
+				line = input[lineBreakMap[i-1]+1 : pos]
+			}
+			p := Product{}
+			err := json.Unmarshal(line, &p)
+			if err != nil {
+				log.Printf("Cannot unmarshal: %v", err)
+			}
+			ps[i] = p
+
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 	fmt.Println("Length: ", len(ps))
 
 }
